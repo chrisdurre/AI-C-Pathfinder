@@ -5,7 +5,7 @@ Maze::Maze()
 }
 
 void Maze::search() {
-    QFuture<Node*> future = QtConcurrent::run(this, &Maze::bfs);
+    QFuture<Node*> future = QtConcurrent::run(this, &Maze::iddfs);
 //    Node* returned = future.result();
 //    Node* node = bfs();
 //    qDebug() << "Returned Node:" << returned->getX() << returned->getY();
@@ -35,6 +35,9 @@ QString Maze::getColor(int x, int y) {
         }
         else if (nodeObj->getType() == "used") {
             return "#c4c4c4";
+        }
+        else if(nodeObj->getType() == "path") {
+            return "#98bdf0";
         }
         else {
             return "#ffffff";
@@ -112,7 +115,7 @@ double Maze::calculateH(int x, int y, Node dest) {
     return H;
 }
 
-void Maze::readMazeFile(QString fileName) {
+void Maze::readMazeFile() {
     //open the file
     QFile inFile(fileName);
     if (!inFile.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -286,6 +289,10 @@ Node* Maze::bfs() {
     QList<Node*> queue;
     //used nodes
     QList<Node*> usedNodes;
+    //map of node to parent <Child, Parent>
+    QMap<Node*, Node*> parentMap;
+    Node* start;
+
     //move list
     QVector<std::tuple<QString, int, int>> moves;
     moves.append(std::make_tuple("up", 0, -1));
@@ -295,6 +302,7 @@ Node* Maze::bfs() {
 
     //add the agent starting position to frontier
     queue.append(agent);
+    start = agent;
 
     //loop through all the nodes in queue
     while (!queue.isEmpty()) {
@@ -326,6 +334,9 @@ Node* Maze::bfs() {
                 Node* neighbour = findNode(current->getX() + std::get<1>(move), current->getY() + std::get<2>(move));
                 //if the neighbour hasnt been used before
                 if(!(usedNodes.contains(neighbour) || queue.contains(neighbour))) {
+                    //add the map between the child and parent node
+                    parentMap.insert(neighbour, current);
+
                     //if the neighbour is the solution then return it
                     if(neighbour->getType() == "goal") {
                         qDebug() << "Found goal:" << neighbour->getX() << neighbour->getY();
@@ -333,6 +344,12 @@ Node* Maze::bfs() {
                         neighbour->setType("agent");
                         //set the last used node as a neighbour - required for the final move
                         usedNodes.last()->setType("used");
+
+                        QList<Node*> path = backtrace(parentMap, start, neighbour);
+                        for(int i = 0; i < path.size(); i++) {
+                            path[i]->setType("path");
+                        }
+
                         emit nodesUpdated();
                         return neighbour;
                     } else {
@@ -353,6 +370,9 @@ Node* Maze::dfs() {
     QList<Node*> queue;
     //used nodes
     QList<Node*> usedNodes;
+    //map of node to parent <Child, Parent>
+    QMap<Node*, Node*> parentMap;
+    Node* start;
 
     //move list
     //move list for dfs needs to be reversed to bfs as neighbours are prepended not appended
@@ -364,11 +384,12 @@ Node* Maze::dfs() {
 
     //add the agent starting position to frontier
     queue.append(agent);
+    start = agent;
 
     //loop through all the nodes in queue
     while (!queue.isEmpty()) {
         //sleep 1 sec
-        std::this_thread::sleep_for (std::chrono::milliseconds(500));
+        std::this_thread::sleep_for (std::chrono::milliseconds(800));
 
         //set the last used node as a used node
         if(usedNodes.size() > 0) {
@@ -395,6 +416,9 @@ Node* Maze::dfs() {
                 Node* neighbour = findNode(current->getX() + std::get<1>(move), current->getY() + std::get<2>(move));
                 //if the neighbour hasnt been used before
                 if(!(usedNodes.contains(neighbour) || queue.contains(neighbour))) {
+                    //add the map between the child and parent node
+                    parentMap.insert(neighbour, current);
+
                     //if the neighbour is the solution then return it
                     if(neighbour->getType() == "goal") {
                         qDebug() << "Found goal:" << neighbour->getX() << neighbour->getY();
@@ -402,6 +426,12 @@ Node* Maze::dfs() {
                         neighbour->setType("agent");
                         //set the last used node as a neighbour - required for the final move
                         usedNodes.last()->setType("used");
+
+                        QList<Node*> path = backtrace(parentMap, start, neighbour);
+                        for(int i = 0; i < path.size(); i++) {
+                            path[i]->setType("path");
+                        }
+
                         emit nodesUpdated();
                         return neighbour;
                     } else {
@@ -416,19 +446,134 @@ Node* Maze::dfs() {
     }
 }
 
-//Node* Maze::iddfs() {
-//    qDebug() << "Running IDDFS!";
-//    int i = 0;
-//    //loop from 0 to infinity
-//    do {
+//this function runs the iterative deepening search
+//depth increases from 0 through infinity until goal node is found
+Node* Maze::iddfs() {
+    qDebug() << "Running IDDFS!";
+    //initialise usedNodes list for use in depth limited search
+    QList<Node*> usedNodes;
+    //map of node to parent <Child, Parent>
+    QMap<Node*, Node*> parentMap;
 
-//        i++;
-//    } while (i != -1);
-//}
+    //get the initial states of all of the nodes and store them to reset the maze
+    QList<QString> initialNodesTypes;
+    for(int i = 0; i < nodes.size(); i++) {
+        initialNodesTypes.append(nodes[i]->getType());
+    }
 
-//bool Maze::dls(Node* node, int depth) {
+    //set the agent node as the starting node
+    Node* start = agent;
 
-//}
+    int i = 0;
+    bool found = false;
+    //loop from 0 to infinity
+    do {
+        qDebug() << "at depth " << i;
+
+        //every time the depth changes reset the node states back to original
+        for(int i = 0; i < nodes.size(); i++) {
+            nodes[i]->setType(initialNodesTypes[i]);
+        }
+
+        //run the depth limited search function to specified depth - return a matching node and path to get there
+        QPair<Node*, QMap<Node*, Node*>> found = dls(start, i, usedNodes, parentMap);
+        //if a node was found in the depth limited search then it is solution
+        if(found.first != nullptr) {
+            qDebug() << "found at depth " << i;
+            found.first->setType("agent");
+
+            //create a backtrace of the path to get to the returned goal node
+            QList<Node*> path = backtrace(found.second, start, found.first);
+            for(int i = 0; i < path.size(); i++) {
+                path[i]->setType("path");
+            }
+
+            //update the UI and return the goal node
+            emit nodesUpdated();
+            return found.first;
+        }
+        i++;
+    } while (found == false);
+
+    //if no node was found then there is no goal node
+    qDebug() << "node not found";
+    return nullptr;
+}
+
+//this is the depth limited search function which is recursively called until desired depth is reached
+QPair<Node*, QMap<Node*, Node*>> Maze::dls(Node* node, int depth, QList<Node*> usedNodes, QMap<Node*, Node*> parentMap) {
+    //change any nodes marked as agent to used nodes
+    agentToUsed();
+
+    //move list
+    //move list for dfs needs to be reversed to bfs as neighbours are prepended not appended
+    QVector<std::tuple<QString, int, int>> moves;
+    moves.append(std::make_tuple("up", 0, -1));
+    moves.append(std::make_tuple("left", -1, 0));
+    moves.append(std::make_tuple("down", 0, 1));
+    moves.append(std::make_tuple("right", 1, 0));
+
+    //if the node is a goal then return with path
+    if (node->getType() == "goal") {
+        return qMakePair(node, parentMap);
+    }
+    node->setType("agent");
+    //only continue if the depth is greater than 0 - at 0 return
+    if (depth > 0) {
+        //sleep 20ms
+        std::this_thread::sleep_for (std::chrono::milliseconds(20));
+        //add the current node to used nodes list
+        usedNodes.append(node);
+
+        emit nodesUpdated();
+        //loop through all of the possible moves
+        foreach (auto move, moves) {
+            //if the neighbour is valid
+            if(isValid(node->getX() + std::get<1>(move), node->getY() + std::get<2>(move))) {
+                //get the neighbouring child node
+                Node* child = findNode(node->getX() + std::get<1>(move), node->getY() + std::get<2>(move));
+                //only run dls again if node wasn't previously used
+                if(!usedNodes.contains(child)) {
+                    //add the map between the child and parent node
+                    parentMap.insert(child, node);
+                    QPair<Node*, QMap<Node*, Node*>> found = dls(child, depth - 1, usedNodes, parentMap);
+                    if (found.first != nullptr) {
+                        return found;
+                    }
+                }
+            }
+        }
+    }
+    //if no node was found in desired depth then return null
+    return qMakePair(nullptr, parentMap);
+}
+
+//reset any agent nodes to used nodes
+void Maze::agentToUsed() {
+    for (int i = 0; i < nodes.size(); i++) {
+        if(nodes[i]->getType() == "agent") {
+            nodes[i]->setType("used");
+        }
+    }
+}
+
+//create a backtrace from start to end node using the mapping between parent and child nodes
+QList<Node*> Maze::backtrace(QMap<Node*, Node*> parentMap, Node* start, Node* end) {
+    QList<Node*> path;
+    //add the end node to the start of the path
+    path.append(end);
+
+    //while the last element in the path isnt the starting node
+    while(path.last() != start) {
+        //add the node from the parentMap to the path
+        path.append(parentMap[path.last()]);
+    }
+
+    //reverse the path so start of the path is at the start of the list
+    std::reverse(path.begin(), path.end());
+
+    return path;
+}
 
 
 //QList<Node> Maze::aStar(Node player, Node dest) {

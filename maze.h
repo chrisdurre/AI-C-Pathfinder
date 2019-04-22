@@ -18,6 +18,8 @@
 #include <chrono>
 #include <thread>
 #include <QtConcurrent>
+#include <QMap>
+#include <QPair>
 
 #include "node.h"
 
@@ -27,8 +29,10 @@ class Maze : public QObject {
     Q_PROPERTY(int nCol READ getNCol WRITE setNCol NOTIFY nColChanged)
     Q_PROPERTY(Node* agent READ getAgent WRITE setAgent NOTIFY agentChanged)
     Q_PROPERTY(QList<Node*> nodes READ getNodes WRITE setNodes NOTIFY nodesChanged)
+    Q_PROPERTY(QString fileName READ getFileName WRITE setFileName NOTIFY fileNameChanged)
 public:
-    Q_INVOKABLE void readMazeFile(QString fileName);
+    Q_INVOKABLE void setFileName(QString fileName) { this->fileName = fileName; }
+    Q_INVOKABLE void readMazeFile();
     Q_INVOKABLE void search();
     Q_INVOKABLE QString getColor(int x, int y);
 
@@ -46,6 +50,8 @@ public:
     QList<Node*> getNodes() { return this->nodes; }
     void setNodes(QList<Node*> nodes) { this->nodes = nodes; }
 
+    QString getFileName() { return this->fileName; }
+
     bool isValid(int x, int y);
     bool isDestination(int x, int y);
     //calculate the H cost - cost of all adjacent node paths
@@ -59,18 +65,23 @@ public:
     void readGoalStates(QString str);
     void readObstructionNodes(std::string str);
     void setType(int x, int y, QString type);
+    void agentToUsed();
 
     Node* bfs();
     Node* dfs();
     Node* iddfs();
-    bool dls(Node* node, int depth);
+    QPair<Node*, QMap<Node*, Node*>> dls(Node* node, int depth, QList<Node*> usedNodes, QMap<Node*, Node*> parentMap);
     QList<Node> aStar(Node player, Node dest);
+
+    QList<Node*> backtrace(QMap<Node*, Node*> parentMap, Node* start, Node* end);
+
 
 private:
     int nRow;
     int nCol;
     Node *agent;
     QList<Node*> nodes;
+    QString fileName;
 
 signals:
     void nRowChanged();
@@ -78,6 +89,7 @@ signals:
     void agentChanged();
     void nodesChanged();
     void nodesUpdated();
+    void fileNameChanged();
 };
 
 #endif // MAZE_H

@@ -12,7 +12,8 @@ Item {
         anchors.left: fileNameField.right
         text: "Search"
         onClicked: {
-            maze.readMazeFile(fileNameField.text)
+            maze.setFileName(fileNameField.text)
+            maze.readMazeFile()
             maze.search()
         }
     }
