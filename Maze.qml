@@ -6,15 +6,29 @@ Item {
     TextField {
         id: fileNameField
     }
+    ComboBox {
+        id: algorithmCombo
+        anchors.left: fileNameField.right
+        anchors.top: fileNameField.top
+        currentIndex: 0
+        model: ListModel {
+            id: algorithmModel
+            ListElement { text: "Breadth-First"; }
+            ListElement { text: "Depth-First"; }
+            ListElement { text: "Greedy Best-First"; }
+            ListElement { text: "Iterative Deepening"; }
+        }
+    }
+
     Button {
         id: searchButton
         anchors.top: fileNameField.top
-        anchors.left: fileNameField.right
+        anchors.left: algorithmCombo.right
         text: "Search"
         onClicked: {
             maze.setFileName(fileNameField.text)
             maze.readMazeFile()
-            maze.search()
+            maze.search(algorithmCombo.currentText)
         }
     }
     Grid {

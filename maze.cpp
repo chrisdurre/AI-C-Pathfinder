@@ -4,8 +4,21 @@ Maze::Maze()
 {
 }
 
-void Maze::search() {
-    QFuture<Node*> future = QtConcurrent::run(this, &Maze::iddfs);
+void Maze::search(QString algorithm) {
+    resetMaze();
+    if(algorithm == "Breadth-First") {
+        QFuture<Node*> future = QtConcurrent::run(this, &Maze::bfs);
+    }
+    else if(algorithm == "Depth-First") {
+        QFuture<Node*> future = QtConcurrent::run(this, &Maze::dfs);
+    }
+    else if(algorithm == "Greedy Best-First") {
+        QFuture<Node*> future = QtConcurrent::run(this, &Maze::gbfs);
+    }
+    else if(algorithm == "Iterative Deepening") {
+        QFuture<Node*> future = QtConcurrent::run(this, &Maze::iddfs);
+    }
+//    QFuture<Node*> future = QtConcurrent::run(this, &Maze::gbfs);
 //    Node* returned = future.result();
 //    Node* node = bfs();
 //    qDebug() << "Returned Node:" << returned->getX() << returned->getY();
@@ -108,11 +121,35 @@ bool Maze::isDestination(int x, int y) {
     return false;
 }
 
-//calculate the triangular distance from current location to destination
-double Maze::calculateH(int x, int y, Node dest) {
-    double H = (sqrt((x - dest.getX())*(x - dest.getX())
-        + (y - dest.getY())*(y - dest.getY())));
-    return H;
+//calculate the straight line distance from current location to destination
+double Maze::calculateH(Node* source) {
+    //initialize a large hCost to compare against
+    double hCost = 999999;
+
+    //loop through all the nodes to find a goal node
+    for (int i = 0; i < nodes.size(); i++) {
+        if(nodes[i]->getType() == "goal") {
+            //calculate the heuristic cost to the goal node
+            double hTemp = (sqrt((source->getX() - nodes[i]->getX())*(source->getX() - nodes[i]->getX())
+                + (source->getY() - nodes[i]->getY())*(source->getY() - nodes[i]->getY())));
+            //find the smallest hCost to any goal node
+            if(hTemp < hCost) {
+                hCost = hTemp;
+            }
+        }
+    }
+
+    return hCost;
+}
+
+//reset maze back to original state
+void Maze::resetMaze() {
+    //clear all node types
+    for (int i = 0; i < nodes.size(); i++) {
+        nodes[i]->setType("");
+    }
+    //read original types from file
+    readMazeFile();
 }
 
 void Maze::readMazeFile() {
@@ -306,7 +343,7 @@ Node* Maze::bfs() {
 
     //loop through all the nodes in queue
     while (!queue.isEmpty()) {
-        //sleep 1 sec
+        //sleep 500 ms
         std::this_thread::sleep_for (std::chrono::milliseconds(500));
 
         //set the last used node as a used node
@@ -366,6 +403,7 @@ Node* Maze::bfs() {
 
 Node* Maze::dfs() {
     qDebug() << "Running DFS!";
+
     //queue of nodes
     QList<Node*> queue;
     //used nodes
@@ -388,8 +426,8 @@ Node* Maze::dfs() {
 
     //loop through all the nodes in queue
     while (!queue.isEmpty()) {
-        //sleep 1 sec
-        std::this_thread::sleep_for (std::chrono::milliseconds(800));
+        //sleep 500 ms
+        std::this_thread::sleep_for (std::chrono::milliseconds(500));
 
         //set the last used node as a used node
         if(usedNodes.size() > 0) {
@@ -471,8 +509,8 @@ Node* Maze::iddfs() {
         qDebug() << "at depth " << i;
 
         //every time the depth changes reset the node states back to original
-        for(int i = 0; i < nodes.size(); i++) {
-            nodes[i]->setType(initialNodesTypes[i]);
+        for(int j = 0; j < nodes.size(); j++) {
+            nodes[j]->setType(initialNodesTypes[j]);
         }
 
         //run the depth limited search function to specified depth - return a matching node and path to get there
@@ -484,8 +522,8 @@ Node* Maze::iddfs() {
 
             //create a backtrace of the path to get to the returned goal node
             QList<Node*> path = backtrace(found.second, start, found.first);
-            for(int i = 0; i < path.size(); i++) {
-                path[i]->setType("path");
+            for(int k = 0; k < path.size(); k++) {
+                path[k]->setType("path");
             }
 
             //update the UI and return the goal node
@@ -546,6 +584,101 @@ QPair<Node*, QMap<Node*, Node*>> Maze::dls(Node* node, int depth, QList<Node*> u
     }
     //if no node was found in desired depth then return null
     return qMakePair(nullptr, parentMap);
+}
+
+Node* Maze::gbfs() {
+    qDebug() << "Running Greedy Best-First Search!";
+    //queue of nodes
+    QList<Node*> queue;
+    //used nodes
+    QList<Node*> usedNodes;
+    //map of node to parent <Child, Parent>
+    QMap<Node*, Node*> parentMap;
+    Node* start;
+
+    //move list
+    QVector<std::tuple<QString, int, int>> moves;
+    moves.append(std::make_tuple("up", 0, -1));
+    moves.append(std::make_tuple("left", -1, 0));
+    moves.append(std::make_tuple("down", 0, 1));
+    moves.append(std::make_tuple("right", 1, 0));
+
+    //add the agent starting position to frontier and calculate its heuristic cost
+    agent->setHCost(calculateH(agent));
+    queue.append(agent);
+    start = agent;
+
+    //loop through all the nodes in queue
+    while (!queue.isEmpty()) {
+        //sleep 500 ms
+        std::this_thread::sleep_for (std::chrono::milliseconds(500));
+
+        //set the last used node as a used node
+        if(usedNodes.size() > 0) {
+            usedNodes.last()->setType("used");
+        }
+
+        //find the node with the lowest H value in the queue
+        Node* minHNode = *std::min_element(queue.begin(), queue.end(),
+                                         []( Node* &a, Node* &b)
+                                        {
+                                            return a->getHCost() < b->getHCost();
+                                        }  );
+
+        //remove any instances of the node from the queue and add it to usedNodes list
+        queue.removeAll(minHNode);
+        qDebug() << "current" << minHNode->getX() << minHNode->getY();
+        usedNodes.append(minHNode);
+
+        //if the current node is the destination
+        if(minHNode->getType() == "goal") {
+            return minHNode;
+        }
+        //set the current node as the agent
+        minHNode->setType("agent");
+        emit nodesUpdated();
+
+        //loop through all of the possible moves
+        foreach (auto move, moves) {
+            //if the neighbour is valid
+            if(isValid(minHNode->getX() + std::get<1>(move), minHNode->getY() + std::get<2>(move))) {
+                //get the node neighbouring node
+                Node* neighbour = findNode(minHNode->getX() + std::get<1>(move), minHNode->getY() + std::get<2>(move));
+
+                //if the neighbour hasnt been used before
+                if(!(usedNodes.contains(neighbour) || queue.contains(neighbour))) {
+                    //calculate the heuristic cost and set it to the neighbouring node
+                    neighbour->setHCost(calculateH(neighbour));
+
+                    //add the map between the child and parent node
+                    parentMap.insert(neighbour, minHNode);
+
+                    //if the neighbour is the solution then return it
+                    if(neighbour->getType() == "goal") {
+                        qDebug() << "Found goal:" << neighbour->getX() << neighbour->getY();
+                        //set the goal node as an agent
+                        neighbour->setType("agent");
+                        //set the last used node as a neighbour - required for the final move
+                        usedNodes.last()->setType("used");
+
+                        //create a backtrace of the path to get to the returned goal node
+                        QList<Node*> path = backtrace(parentMap, start, neighbour);
+                        for(int i = 0; i < path.size(); i++) {
+                            path[i]->setType("path");
+                        }
+
+                        emit nodesUpdated();
+                        return neighbour;
+                    } else {
+                        //set the nodes type to neighbour
+                        neighbour->setType("neighbour");
+                        //add the neighbour to the END of the queue
+                        queue.append(neighbour);
+                    }
+                }
+            }
+        }
+    }
 }
 
 //reset any agent nodes to used nodes

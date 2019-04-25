@@ -33,7 +33,7 @@ class Maze : public QObject {
 public:
     Q_INVOKABLE void setFileName(QString fileName) { this->fileName = fileName; }
     Q_INVOKABLE void readMazeFile();
-    Q_INVOKABLE void search();
+    Q_INVOKABLE void search(QString algorithm);
     Q_INVOKABLE QString getColor(int x, int y);
 
     Maze();
@@ -55,7 +55,7 @@ public:
     bool isValid(int x, int y);
     bool isDestination(int x, int y);
     //calculate the H cost - cost of all adjacent node paths
-    double calculateH(int x, int y, Node dest);
+    double calculateH(Node* source);
 
     QVariant findInModel(QList<QObject*> model, std::function<bool(QObject* obj)> const& criteria);
     Node* findNode(int x, int y);
@@ -66,10 +66,12 @@ public:
     void readObstructionNodes(std::string str);
     void setType(int x, int y, QString type);
     void agentToUsed();
+    void resetMaze();
 
     Node* bfs();
     Node* dfs();
     Node* iddfs();
+    Node* gbfs();
     QPair<Node*, QMap<Node*, Node*>> dls(Node* node, int depth, QList<Node*> usedNodes, QMap<Node*, Node*> parentMap);
     QList<Node> aStar(Node player, Node dest);
 
